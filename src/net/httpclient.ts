@@ -50,7 +50,7 @@ export class HttpClient {
         }
 
         if (!headers.has("X-ClientService-ClientTag")) {
-            headers.append("X-ClientService-ClientTag", "PnPCoreJS:1.0.5");
+            headers.append("X-ClientService-ClientTag", "PnPCoreJS:1.0.6");
         }
 
         opts = Util.extend(opts, { headers: headers });
@@ -128,6 +128,16 @@ export class HttpClient {
 
     public post(url: string, options: FetchOptions = {}): Promise<Response> {
         let opts = Util.extend(options, { method: "POST" });
+        return this.fetch(url, opts);
+    }
+
+    public patch(url: string, options: FetchOptions = {}): Promise<Response> {
+        let opts = Util.extend(options, { method: "PATCH" });
+        return this.fetch(url, opts);
+    }
+
+    public delete(url: string, options: FetchOptions = {}): Promise<Response> {
+        let opts = Util.extend(options, { method: "DELETE" });
         return this.fetch(url, opts);
     }
 

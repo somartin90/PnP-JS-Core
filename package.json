@@ -1,6 +1,6 @@
 {
   "name": "sp-pnp-js",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "A reusable JavaScript library targeting SharePoint client-side development.",
   "main": "./lib/pnp.js",
   "typings": "./lib/pnp",
@@ -44,14 +44,15 @@
     "typescript": "^2.0.3",
     "typings": "^1.4.0",
     "vinyl-buffer": "^1.0.0",
-    "vinyl-source-stream": "^1.1.0"
+    "vinyl-source-stream": "^1.1.0",
+    "yargs": "^6.0.0"
   },
   "scripts": {
     "test": "gulp test"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/OfficeDev/PnP-JS-Core"
+    "url": "git://github.com/SharePoint/PnP-JS-Core"
   },
   "author": {
     "name": "Microsoft and other contributors"
@@ -60,12 +61,14 @@
   "keywords": [
     "sharepoint",
     "office365",
-    "tools"
+    "tools",
+    "spfx",
+    "sharepoint framework"
   ],
   "bugs": {
-    "url": "https://github.com/OfficeDev/PnP-JS-Core/issues"
+    "url": "https://github.com/SharePoint/PnP-JS-Core/issues"
   },
-  "homepage": "https://github.com/OfficeDev/PnP-JS-Core",
+  "homepage": "https://github.com/SharePoint/PnP-JS-Core",
   "browser": {
     "./build/src/net/nodefetchclient.js": "./build/src/net/nodefetchclientbrowser.js",
     "./lib/net/nodefetchclient.js": "./lib/net/nodefetchclientbrowser.js"

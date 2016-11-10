@@ -189,7 +189,7 @@ export class Util {
     }
 
     /**
-     * Provides functionality to extend the given object by doign a shallow copy
+     * Provides functionality to extend the given object by doing a shallow copy
      *
      * @param target The object to which properties will be copied
      * @param source The source object from which properties will be copied

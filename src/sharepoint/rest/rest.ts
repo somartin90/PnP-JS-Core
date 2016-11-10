@@ -1,6 +1,7 @@
 "use strict";
 
-import { Search, SearchQuery, SearchResult } from "./search";
+import { Search, SearchQuery, SearchResults } from "./search";
+import { SearchSuggest, SearchSuggestQuery, SearchSuggestResult } from "./searchsuggest";
 import { Site } from "./site";
 import { Web } from "./webs";
 import { Util } from "../../utils/util";
@@ -18,7 +19,25 @@ export class Rest {
      *
      * @param query The SearchQuery definition
      */
-    public search(query: string | SearchQuery): Promise<SearchResult> {
+    public searchSuggest(query: string | SearchSuggestQuery): Promise<SearchSuggestResult> {
+
+        let finalQuery: SearchSuggestQuery;
+
+        if (typeof query === "string") {
+            finalQuery = { querytext: query };
+        } else {
+            finalQuery = query;
+        }
+
+        return new SearchSuggest("").execute(finalQuery);
+    }
+
+    /**
+     * Executes a search against this web context
+     *
+     * @param query The SearchQuery definition
+     */
+    public search(query: string | SearchQuery): Promise<SearchResults> {
 
         let finalQuery: SearchQuery;
 
@@ -60,7 +79,7 @@ export class Rest {
      * 
      */
     public createBatch(): ODataBatch {
-        return new ODataBatch();
+        return this.web.createBatch();
     }
 
     /**

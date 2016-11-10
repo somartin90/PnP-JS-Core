@@ -5,6 +5,7 @@ import { Views, View } from "./views";
 import { ContentTypes } from "./contenttypes";
 import { Fields } from "./fields";
 import { Forms } from "./forms";
+import { Subscriptions } from "./subscriptions";
 import { Queryable, QueryableInstance, QueryableCollection } from "./queryable";
 import { QueryableSecurable } from "./queryablesecurable";
 import { Util } from "../../utils/util";
@@ -235,6 +236,14 @@ export class List extends QueryableSecurable {
      */
     public get informationRightsManagementSettings(): Queryable {
         return new Queryable(this, "InformationRightsManagementSettings");
+    }
+
+    /**
+     * Gets the webhook subscriptions of this list
+     *
+     */
+    public get subscriptions(): Subscriptions {
+        return new Subscriptions(this);
     }
 
     /**

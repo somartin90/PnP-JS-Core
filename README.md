@@ -2,7 +2,7 @@
 
 # JavaScript Core Component
 
-[![npm version](https://badge.fury.io/js/sp-pnp-js.svg)](https://badge.fury.io/js/sp-pnp-js) [![Join the chat at https://gitter.im/OfficeDev/PnP-JS-Core](https://badges.gitter.im/OfficeDev/PnP-JS-Core.svg)](https://gitter.im/OfficeDev/PnP-JS-Core?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Downloads](https://img.shields.io/npm/dm/sp-pnp-js.svg)](https://www.npmjs.com/package/sp-pnp-js) [![bitHound Overall Score](https://www.bithound.io/github/OfficeDev/PnP-JS-Core/badges/score.svg)](https://www.bithound.io/github/OfficeDev/PnP-JS-Core)
+[![npm version](https://badge.fury.io/js/sp-pnp-js.svg)](https://badge.fury.io/js/sp-pnp-js) [![Join the chat at https://gitter.im/OfficeDev/PnP-JS-Core](https://badges.gitter.im/OfficeDev/PnP-JS-Core.svg)](https://gitter.im/OfficeDev/PnP-JS-Core?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Downloads](https://img.shields.io/npm/dm/sp-pnp-js.svg)](https://www.npmjs.com/package/sp-pnp-js) [![bitHound Overall Score](https://www.bithound.io/github/SharePoint/PnP-JS-Core/badges/score.svg)](https://www.bithound.io/github/SharePoint/PnP-JS-Core)
 
 The Patterns and Practices JavaScript Core Library was created to help developers by simplifying common operations within SharePoint and the SharePoint Framework. Currently it contains a fluent API for working with the full SharePoint REST API as well as utility and helper functions. This takes the guess work out of creating REST requests, letting developers focus on the what and less on the how.
 
@@ -26,7 +26,7 @@ Add the package from bower
 
 ### Wiki
 
-Please see [the wiki](https://github.com/OfficeDev/PnP-JS-Core/wiki) for detailed guides on getting started both using and contributing to the library.
+Please see [the wiki](https://github.com/SharePoint/PnP-JS-Core/wiki) for detailed guides on getting started both using and contributing to the library.
 
 ### API Documentation
 

@@ -4,6 +4,7 @@ import { Queryable, QueryableInstance } from "./queryable";
 import { Web } from "./webs";
 import { UserCustomActions } from "./usercustomactions";
 import { ContextInfo, DocumentLibraryInformation } from "./types";
+import { ODataBatch } from "./odata";
 
 /**
  * Describes a site collection
@@ -84,5 +85,13 @@ export class Site extends QueryableInstance {
                 return data;
             }
         });
+    }
+
+    /**
+     * Creates a new batch for requests within the context of context this site
+     * 
+     */
+    public createBatch(): ODataBatch {
+        return new ODataBatch(this.parentUrl);
     }
 }

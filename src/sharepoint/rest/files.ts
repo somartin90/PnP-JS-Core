@@ -2,6 +2,17 @@
 
 import { Queryable, QueryableCollection, QueryableInstance } from "./queryable";
 import { Item } from "./items";
+import { ODataParser } from "./odata";
+import { Util } from "../../utils/util";
+
+export interface ChunkedFileUploadProgressData {
+    stage: "starting" | "continue" | "finishing";
+    blockNumber: number;
+    totalBlocks: number;
+    chunkSize: number;
+    currentPointer: number;
+    fileSize: number;
+}
 
 /**
  * Describes a collection of File objects
@@ -33,18 +44,45 @@ export class Files extends QueryableCollection {
      * Uploads a file.
      * 
      * @param url The folder-relative url of the file.
-     * @param shouldOverWrite Should a file with the same name in the same location be overwritten?
      * @param content The file contents blob.
+     * @param shouldOverWrite Should a file with the same name in the same location be overwritten? (default: true)
      * @returns The new File and the raw response. 
      */
     public add(url: string, content: Blob, shouldOverWrite = true): Promise<FileAddResult> {
         return new Files(this, `add(overwrite=${shouldOverWrite},url='${url}')`)
-            .post({ body: content }).then((response) => {
+            .post({
+                body: content,
+            }).then((response) => {
                 return {
                     data: response,
                     file: this.getByName(url),
                 };
             });
+    }
+
+    /**
+     * Uploads a file.
+     * 
+     * @param url The folder-relative url of the file.
+     * @param content The Blob file content to add
+     * @param progress A callback function which can be used to track the progress of the upload
+     * @param shouldOverWrite Should a file with the same name in the same location be overwritten? (default: true)
+     * @param chunkSize The size of each file slice, in bytes (default: 10485760)
+     * @returns The new File and the raw response. 
+     */
+    public addChunked(
+        url: string,
+        content: Blob,
+        progress?: (data: ChunkedFileUploadProgressData) => void,
+        shouldOverWrite = true,
+        chunkSize = 10485760): Promise<FileAddResult> {
+        let adder = new Files(this, `add(overwrite=${shouldOverWrite},url='${url}')`);
+        return adder.post().then(() => this.getByName(url)).then(file => file.setContentChunked(content, progress, chunkSize)).then((response) => {
+            return {
+                data: response,
+                file: this.getByName(url),
+            };
+        });
     }
 
     /**
@@ -99,14 +137,6 @@ export class File extends QueryableInstance {
     }
 
     /**
-     * Gets the contents of the file - If the file is not JSON a custom parser function should be used with the get call
-     * 
-     */
-    public get value(): Queryable {
-        return new Queryable(this, "$value");
-    }
-
-    /**
      * Approves the file submitted for content approval with the specified comment.
      * Only documents in lists that are enabled for content approval can be approved.
      * 
@@ -148,21 +178,6 @@ export class File extends QueryableInstance {
     }
 
     /**
-     * Continues the chunk upload session with an additional fragment.
-     * The current file content is not changed.
-     * Use the uploadId value that was passed to the StartUpload method that started the upload session.
-     * This method is currently available only on Office 365.
-     * 
-     * @param uploadId The unique identifier of the upload session.
-     * @param fileOffset The size of the offset into the file where the fragment starts.
-     * @param fragment The file contents.
-     * @returns The size of the total uploaded data in bytes. 
-     */
-    public continueUpload(uploadId: string, fileOffset: number, b: Blob): Promise<number> {
-        return new File(this, `continueUpload(uploadId=guid'${uploadId}',fileOffset=${fileOffset})`).postAs<any, number>({ body: b });
-    }
-
-    /**
      * Copies the file to the destination url.
      * 
      * @param url The absolute url or server relative url of the destination file path to copy to.
@@ -197,26 +212,6 @@ export class File extends QueryableInstance {
     }
 
     /**
-     * Uploads the last file fragment and commits the file. The current file content is changed when this method completes.
-     * Use the uploadId value that was passed to the StartUpload method that started the upload session.
-     * This method is currently available only on Office 365.
-     * 
-     * @param uploadId The unique identifier of the upload session.
-     * @param fileOffset The size of the offset into the file where the fragment starts.
-     * @param fragment The file contents.
-     * @returns The newly uploaded file. 
-     */
-    public finishUpload(uploadId: string, fileOffset: number, fragment: Blob): Promise<FileAddResult> {
-        return new File(this, `finishUpload(uploadId=guid'${uploadId}',fileOffset=${fileOffset})`)
-            .postAs<any, { ServerRelativeUrl: string }>({ body: fragment }).then((response) => {
-                return {
-                    data: response,
-                    file: new File(response.ServerRelativeUrl),
-                };
-            });
-    }
-
-    /**
      * Specifies the control set used to access, modify, or add Web Parts associated with this Web Part Page and view.
      * An exception is thrown if the file is not an ASPX page.
      * 
@@ -234,14 +229,6 @@ export class File extends QueryableInstance {
      */
     public moveTo(url: string, moveOperations = MoveOperations.Overwrite): Promise<void> {
         return new File(this, `moveTo(newurl='${url}',flags=${moveOperations})`).post();
-    }
-
-    /**
-     * Opens the file as a stream.
-     * 
-     */
-    public openBinaryStream(): Queryable {
-        return new Queryable(this, "openBinaryStream");
     }
 
     /**
@@ -263,33 +250,6 @@ export class File extends QueryableInstance {
     }
 
     /**
-     * Uploads a binary file.
-     * 
-     * @data The file contents.
-     */
-    public saveBinaryStream(data: Blob): Promise<void> {
-        return new File(this, "saveBinary").post({ body: data });
-    }
-
-    /**
-     * Starts a new chunk upload session and uploads the first fragment.
-     * The current file content is not changed when this method completes.
-     * The method is idempotent (and therefore does not change the result) as long as you use the same values for uploadId and stream.
-     * The upload session ends either when you use the CancelUpload method or when you successfully
-     * complete the upload session by passing the rest of the file contents through the ContinueUpload and FinishUpload methods.
-     * The StartUpload and ContinueUpload methods return the size of the running total of uploaded data in bytes,
-     * so you can pass those return values to subsequent uses of ContinueUpload and FinishUpload.
-     * This method is currently available only on Office 365.
-     * 
-     * @param uploadId The unique identifier of the upload session.
-     * @param fragment The file contents.
-     * @returns The size of the total uploaded data in bytes. 
-     */
-    public startUpload(uploadId: string, fragment: Blob): Promise<number> {
-        return new File(this, `startUpload(uploadId=guid'${uploadId}')`).postAs<any, number>({ body: fragment });
-    }
-
-    /**
      * Reverts an existing checkout for the file.
      * 
      */
@@ -307,6 +267,182 @@ export class File extends QueryableInstance {
             throw new Error("The maximum comment length is 1023 characters.");
         }
         return new File(this, `unpublish(comment='${comment}')`).post();
+    }
+
+    /**
+     * Gets the contents of the file as text
+     * 
+     */
+    public getText(): Promise<string> {
+
+        return new File(this, "$value").get(new TextFileParser(), { headers: { "binaryStringResponseBody": "true" } });
+    }
+
+    /**
+     * Gets the contents of the file as a blob, does not work in Node.js
+     * 
+     */
+    public getBlob(): Promise<Blob> {
+
+        return new File(this, "$value").get(new BlobFileParser(), { headers: { "binaryStringResponseBody": "true" } });
+    }
+
+    /**
+     * Gets the contents of a file as an ArrayBuffer, works in Node.js
+     */
+    public getBuffer(): Promise<ArrayBuffer> {
+
+        return new File(this, "$value").get(new BufferFileParser(), { headers: { "binaryStringResponseBody": "true" } });
+    }
+
+    /**
+     * Sets the content of a file, for large files use setContentChunked
+     * 
+     * @param content The file content
+     * 
+     */
+    public setContent(content: string | ArrayBuffer | Blob): Promise<File> {
+
+        let setter = new File(this, "$value");
+
+        return setter.post({
+            body: content,
+            headers: {
+                "X-HTTP-Method": "PUT",
+            },
+        }).then(_ => new File(this));
+    }
+
+    /**
+     * Sets the contents of a file using a chunked upload approach
+     * 
+     * @param file The file to upload
+     * @param progress A callback function which can be used to track the progress of the upload
+     * @param chunkSize The size of each file slice, in bytes (default: 10485760)
+     */
+    public setContentChunked(
+        file: Blob,
+        progress?: (data: ChunkedFileUploadProgressData) => void,
+        chunkSize = 10485760): Promise<File> {
+
+        if (typeof progress === "undefined") {
+            progress = (data) => null;
+        }
+
+        let self = this;
+        let fileSize = file.size;
+
+        let blockCount = parseInt((file.size / chunkSize).toString(), 10) + ((file.size % chunkSize === 0) ? 1 : 0);
+        console.log(`blockCount: ${blockCount}`);
+
+        let uploadId = Util.getGUID();
+
+        // start the chain with the first fragment
+        progress({ blockNumber: 1, chunkSize: chunkSize, currentPointer: 0, fileSize: fileSize, stage: "starting", totalBlocks: blockCount });
+
+        let chain = self.startUpload(uploadId, file.slice(0, chunkSize));
+
+        // skip the first and last blocks
+        for (let i = 2; i < blockCount; i++) {
+
+            chain = chain.then(pointer => {
+
+                progress({ blockNumber: i, chunkSize: chunkSize, currentPointer: pointer, fileSize: fileSize, stage: "continue", totalBlocks: blockCount });
+
+                return self.continueUpload(uploadId, pointer, file.slice(pointer, pointer + chunkSize));
+            });
+
+        }
+
+        return chain.then(pointer => {
+
+            progress({ blockNumber: blockCount, chunkSize: chunkSize, currentPointer: pointer, fileSize: fileSize, stage: "finishing", totalBlocks: blockCount });
+
+            return self.finishUpload(uploadId, pointer, file.slice(pointer));
+
+        }).then(_ => {
+
+            return self;
+        });
+    }
+
+    /**
+     * Starts a new chunk upload session and uploads the first fragment.
+     * The current file content is not changed when this method completes.
+     * The method is idempotent (and therefore does not change the result) as long as you use the same values for uploadId and stream.
+     * The upload session ends either when you use the CancelUpload method or when you successfully
+     * complete the upload session by passing the rest of the file contents through the ContinueUpload and FinishUpload methods.
+     * The StartUpload and ContinueUpload methods return the size of the running total of uploaded data in bytes,
+     * so you can pass those return values to subsequent uses of ContinueUpload and FinishUpload.
+     * This method is currently available only on Office 365.
+     * 
+     * @param uploadId The unique identifier of the upload session.
+     * @param fragment The file contents.
+     * @returns The size of the total uploaded data in bytes. 
+     */
+    private startUpload(uploadId: string, fragment: ArrayBuffer | Blob): Promise<number> {
+        return new File(this, `startUpload(uploadId=guid'${uploadId}')`).postAs<any, string>({ body: fragment }).then(n => parseFloat(n));
+    }
+
+    /**
+     * Continues the chunk upload session with an additional fragment.
+     * The current file content is not changed.
+     * Use the uploadId value that was passed to the StartUpload method that started the upload session.
+     * This method is currently available only on Office 365.
+     * 
+     * @param uploadId The unique identifier of the upload session.
+     * @param fileOffset The size of the offset into the file where the fragment starts.
+     * @param fragment The file contents.
+     * @returns The size of the total uploaded data in bytes. 
+     */
+    private continueUpload(uploadId: string, fileOffset: number, fragment: ArrayBuffer | Blob): Promise<number> {
+        return new File(this, `continueUpload(uploadId=guid'${uploadId}',fileOffset=${fileOffset})`).postAs<any, string>({ body: fragment }).then(n => parseFloat(n));
+    }
+
+    /**
+     * Uploads the last file fragment and commits the file. The current file content is changed when this method completes.
+     * Use the uploadId value that was passed to the StartUpload method that started the upload session.
+     * This method is currently available only on Office 365.
+     * 
+     * @param uploadId The unique identifier of the upload session.
+     * @param fileOffset The size of the offset into the file where the fragment starts.
+     * @param fragment The file contents.
+     * @returns The newly uploaded file. 
+     */
+    private finishUpload(uploadId: string, fileOffset: number, fragment: ArrayBuffer | Blob): Promise<FileAddResult> {
+        return new File(this, `finishUpload(uploadId=guid'${uploadId}',fileOffset=${fileOffset})`)
+            .postAs<any, { ServerRelativeUrl: string }>({ body: fragment }).then((response) => {
+                return {
+                    data: response,
+                    file: new File(response.ServerRelativeUrl),
+                };
+            });
+    }
+}
+
+export class TextFileParser implements ODataParser<any, string> {
+
+    public parse(r: Response): Promise<string> {
+        return r.text();
+    }
+}
+
+export class BlobFileParser implements ODataParser<any, Blob> {
+
+    public parse(r: Response): Promise<Blob> {
+        return r.blob();
+    }
+}
+
+export class BufferFileParser implements ODataParser<any, ArrayBuffer> {
+
+    public parse(r: any): Promise<ArrayBuffer> {
+
+        if (Util.isFunction(r.arrayBuffer)) {
+            return r.arrayBuffer();
+        }
+
+        return r.buffer();
     }
 }
 

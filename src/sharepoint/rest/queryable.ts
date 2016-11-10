@@ -1,13 +1,12 @@
 "use strict";
 
 import { Util } from "../../utils/util";
+import { Logger, LogLevel } from "../../utils/logging";
 import { Dictionary } from "../../collections/collections";
 import { FetchOptions, HttpClient } from "../../net/httpclient";
 import { ODataParser, ODataDefaultParser, ODataBatch } from "./odata";
 import { ICachingOptions, CachingParserWrapper, CachingOptions } from "./caching";
 import { RuntimeConfig } from "../../configuration/pnplibconfig";
-
-declare var _spPageContextInfo: any;
 
 export interface QueryableConstructor<T> {
     new (baseUrl: string | Queryable, path?: string): T;
@@ -68,21 +67,14 @@ export class Queryable {
     }
 
     /**
-     * Blocks a batch call from occuring, MUST be cleared with clearBatchDependency before a request will execute
+     * Blocks a batch call from occuring, MUST be cleared by calling the returned function
      */
-    protected addBatchDependency() {
-        if (this._batch !== null) {
-            this._batch.incrementBatchDep();
+    protected addBatchDependency(): () => void {
+        if (this.hasBatch) {
+            return this._batch.addBatchDependency();
         }
-    }
 
-    /**
-     * Clears a batch request dependency
-     */
-    protected clearBatchDependency() {
-        if (this._batch !== null) {
-            this._batch.decrementBatchDep();
-        }
+        return () => null;
     }
 
     /**
@@ -126,15 +118,17 @@ export class Queryable {
             // being created from just a string.
 
             let urlStr = baseUrl as string;
-            if (urlStr.lastIndexOf("/") < 0) {
+            if (Util.isUrlAbsolute(urlStr) || urlStr.lastIndexOf("/") < 0) {
                 this._parentUrl = urlStr;
                 this._url = Util.combinePaths(urlStr, path);
             } else if (urlStr.lastIndexOf("/") > urlStr.lastIndexOf("(")) {
+                // .../items(19)/fields
                 let index = urlStr.lastIndexOf("/");
                 this._parentUrl = urlStr.slice(0, index);
                 path = Util.combinePaths(urlStr.slice(index), path);
                 this._url = Util.combinePaths(this._parentUrl, path);
             } else {
+                // .../items(19)
                 let index = urlStr.lastIndexOf("(");
                 this._parentUrl = urlStr.slice(0, index);
                 this._url = Util.combinePaths(urlStr, path);
@@ -142,10 +136,6 @@ export class Queryable {
         } else {
             let q = baseUrl as Queryable;
             this._parentUrl = q._url;
-            // only copy batch if we don't already have one
-            if (!this.hasBatch && q.hasBatch) {
-                this._batch = q._batch;
-            }
             let target = q._query.get("@target");
             if (target !== null) {
                 this._query.add("@target", target);
@@ -162,11 +152,12 @@ export class Queryable {
      * 
      * let b = pnp.sp.createBatch(); 
      * pnp.sp.web.inBatch(b).get().then(...);
+     * b.execute().then(...)
      * ```
      */
     public inBatch(batch: ODataBatch): this {
+
         if (this._batch !== null) {
-            // TODO: what do we want to do?
             throw new Error("This query is already part of a batch.");
         }
 
@@ -189,7 +180,7 @@ export class Queryable {
     }
 
     /**
-     * Gets the currentl url, made server relative or absolute based on the availability of the _spPageContextInfo object
+     * Gets the currentl url, made absolute based on the availability of the _spPageContextInfo object
      *
      */
     public toUrl(): string {
@@ -230,8 +221,16 @@ export class Queryable {
         return this.postImpl(postOptions, parser);
     }
 
+    protected patch(patchOptions: FetchOptions = {}, parser: ODataParser<any, any> = new ODataDefaultParser()): Promise<any> {
+        return this.patchImpl(patchOptions, parser);
+    }
+
+    protected delete(deleteOptions: FetchOptions = {}, parser: ODataParser<any, any> = new ODataDefaultParser()): Promise<any> {
+        return this.deleteImpl(deleteOptions, parser);
+    }
+
     /**
-     * Gets a parent for this isntance as specified
+     * Gets a parent for this instance as specified
      *
      * @param factory The contructor for the class to create
      */
@@ -270,54 +269,93 @@ export class Queryable {
             parser = new CachingParserWrapper(parser, options);
         }
 
-        if (this._batch === null) {
+        if (!this.hasBatch) {
 
             // we are not part of a batch, so proceed as normal
             let client = new HttpClient();
-            return client.get(this.toUrlAndQuery(), getOptions).then(function (response) {
-
-                if (!response.ok) {
-                    throw "Error making GET request: " + response.statusText;
-                }
-
-                return parser.parse(response);
+            return client.get(this.toUrlAndQuery(), getOptions).then((response) => {
+                return this.processHttpClientResponse(response, parser);
             });
+
         } else {
 
-            return this._batch.add(this.toUrlAndQuery(), "GET", {}, parser);
+            return this._batch.add(this.toUrlAndQuery(), "GET", getOptions, parser);
         }
     }
 
     private postImpl<U>(postOptions: FetchOptions, parser: ODataParser<any, U>): Promise<U> {
 
-        if (this._batch === null) {
+        if (!this.hasBatch) {
 
             // we are not part of a batch, so proceed as normal
             let client = new HttpClient();
-
-            return client.post(this.toUrlAndQuery(), postOptions).then(function (response) {
-
-                // 200 = OK (delete)
-                // 201 = Created (create)
-                // 204 = No Content (update)
-                if (!response.ok) {
-                    throw "Error making POST request: " + response.statusText;
-                }
-
-                if ((response.headers.has("Content-Length") && parseFloat(response.headers.get("Content-Length")) === 0)
-                    || response.status === 204) {
-
-                    // in these cases the server has returned no content, so we create an empty object
-                    // this was done because the fetch browser methods throw exceptions with no content
-                    return new Promise<any>((resolve, reject) => { resolve({}); });
-                }
-
-                // pipe our parsed content
-                return parser.parse(response);
+            return client.post(this.toUrlAndQuery(), postOptions).then((response) => {
+                return this.processHttpClientResponse(response, parser);
             });
+
         } else {
             return this._batch.add(this.toUrlAndQuery(), "POST", postOptions, parser);
         }
+    }
+
+    private patchImpl<U>(patchOptions: FetchOptions, parser: ODataParser<any, U>): Promise<U> {
+
+        if (!this.hasBatch) {
+
+            // we are not part of a batch, so proceed as normal
+            let client = new HttpClient();
+            return client.patch(this.toUrlAndQuery(), patchOptions).then((response) => {
+                return this.processHttpClientResponse(response, parser);
+            });
+
+        } else {
+            return this._batch.add(this.toUrlAndQuery(), "PATCH", patchOptions, parser);
+        }
+    }
+
+    private deleteImpl<U>(deleteOptions: FetchOptions, parser: ODataParser<any, U>): Promise<U> {
+
+        if (!this.hasBatch) {
+
+            // we are not part of a batch, so proceed as normal
+            let client = new HttpClient();
+            return client.delete(this.toUrlAndQuery(), deleteOptions).then((response) => {
+                return this.processHttpClientResponse(response, parser);
+            });
+
+        } else {
+            return this._batch.add(this.toUrlAndQuery(), "DELETE", deleteOptions, parser);
+        }
+    }
+
+    private processHttpClientResponse<U>(response: Response, parser: ODataParser<any, U>): Promise<U> {
+
+        // 200 = OK (get, delete)
+        // 201 = Created (create)
+        // 204 = No Content (update)
+        if (!response.ok) {
+
+            response.text().then(text => {
+                Logger.log({
+                    data: response,
+                    level: LogLevel.Error,
+                    message: text,
+                });
+
+                throw `Error making HttpClient request in queryable: ${response.statusText}`;
+            });
+        }
+
+        if ((response.headers.has("Content-Length") && parseFloat(response.headers.get("Content-Length")) === 0)
+            || response.status === 204) {
+
+            // in these cases the server has returned no content, so we create an empty object
+            // this was done because the fetch browser methods throw exceptions with no content
+            return new Promise<any>((resolve, reject) => { resolve({}); });
+        }
+
+        // pipe our parsed content
+        return parser.parse(response);
     }
 }
 
@@ -332,7 +370,7 @@ export class QueryableCollection extends Queryable {
      * 
      * @param filter The string representing the filter query
      */
-    public filter(filter: string): QueryableCollection {
+    public filter(filter: string): this {
         this._query.add("$filter", filter);
         return this;
     }
@@ -342,7 +380,7 @@ export class QueryableCollection extends Queryable {
      * 
      * @param selects One or more fields to return
      */
-    public select(...selects: string[]): QueryableCollection {
+    public select(...selects: string[]): this {
         this._query.add("$select", selects.join(","));
         return this;
     }
@@ -352,7 +390,7 @@ export class QueryableCollection extends Queryable {
      * 
      * @param expands The Fields for which to expand the values
      */
-    public expand(...expands: string[]): QueryableCollection {
+    public expand(...expands: string[]): this {
         this._query.add("$expand", expands.join(","));
         return this;
     }
@@ -363,7 +401,7 @@ export class QueryableCollection extends Queryable {
      * @param orderby The name of the field to sort on
      * @param ascending If false DESC is appended, otherwise ASC (default)
      */
-    public orderBy(orderBy: string, ascending = true): QueryableCollection {
+    public orderBy(orderBy: string, ascending = true): this {
         let keys = this._query.getKeys();
         let query = [];
         let asc = ascending ? " asc" : " desc";
@@ -385,7 +423,7 @@ export class QueryableCollection extends Queryable {
      * 
      * @param skip The number of items to skip
      */
-    public skip(skip: number): QueryableCollection {
+    public skip(skip: number): this {
         this._query.add("$skip", skip.toString());
         return this;
     }
@@ -395,7 +433,7 @@ export class QueryableCollection extends Queryable {
      * 
      * @param top The query row limit
      */
-    public top(top: number): QueryableCollection {
+    public top(top: number): this {
         this._query.add("$top", top.toString());
         return this;
     }
@@ -413,7 +451,7 @@ export class QueryableInstance extends Queryable {
      * 
      * @param selects One or more fields to return
      */
-    public select(...selects: string[]): QueryableInstance {
+    public select(...selects: string[]): this {
         this._query.add("$select", selects.join(","));
         return this;
     }
@@ -423,7 +461,7 @@ export class QueryableInstance extends Queryable {
      * 
      * @param expands The Fields for which to expand the values
      */
-    public expand(...expands: string[]): QueryableInstance {
+    public expand(...expands: string[]): this {
         this._query.add("$expand", expands.join(","));
         return this;
     }

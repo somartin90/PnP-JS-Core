@@ -99,7 +99,7 @@ export class PnPClientStorageWrapper implements PnPClientStore {
 
             if (o == null) {
                 getter().then((d) => {
-                    this.put(key, d);
+                    this.put(key, d, expire);
                     resolve(d);
                 });
             } else {

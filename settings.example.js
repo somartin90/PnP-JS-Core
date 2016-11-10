@@ -10,6 +10,7 @@ var settings = {
         clientSecret: "{ client secret }",
         enableWebTests: true,
         siteUrl: "{ site collection url }",
+        notificationUrl: "{ notification url }",
     }
 }
 

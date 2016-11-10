@@ -16,7 +16,7 @@ import * as Types from "./types";
 import { List } from "./lists";
 import { SiteUsers, SiteUser } from "./siteusers";
 import { UserCustomActions } from "./usercustomactions";
-import { extractOdataId } from "./odata";
+import { extractOdataId, ODataBatch } from "./odata";
 
 
 export class Webs extends QueryableCollection {
@@ -163,6 +163,14 @@ export class Web extends QueryableSecurable {
      */
     public get roleDefinitions(): RoleDefinitions {
         return new RoleDefinitions(this);
+    }
+
+    /**
+     * Creates a new batch for requests within the context of context this web
+     * 
+     */
+    public createBatch(): ODataBatch {
+        return new ODataBatch(this.parentUrl);
     }
 
     /**
